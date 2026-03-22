@@ -1,100 +1,116 @@
-"""
-📄 Tempo Bot — Парсер файлов с расписанием
-Поддерживаемые форматы: TXT, CSV, XLSX, PDF (текст)
-"""
-
 import os
-import pandas as pd
-from PyPDF2 import PdfReader
-from typing import List, Dict
+from typing import Dict
 
+# optional зависимости
+try:
+    import pandas as pd
+except:
+    pd = None
+
+try:
+    from PyPDF2 import PdfReader
+except:
+    PdfReader = None
+
+
+# ===== TXT =====
 
 def parse_text_file(file_path: str) -> str:
-    """Чтение текстового файла"""
     if not os.path.exists(file_path):
-        return ""
-    
+        return "❌ Файл не найден"
+
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        return content
+            return f.read()
     except Exception as e:
-        return f"Ошибка чтения: {str(e)}"
+        return f"❌ Ошибка чтения TXT: {str(e)}"
 
+
+# ===== CSV =====
 
 def parse_csv_file(file_path: str) -> str:
-    """Чтение CSV файла"""
     if not os.path.exists(file_path):
-        return ""
-    
-    try:
-        df = pd.read_csv(file_path, encoding='utf-8')
-        
-        content = "📋 Расписание из CSV:\n\n"
-        for _, row in df.iterrows():
-            if 'day' in df.columns and 'task' in df.columns:
-                day = row.get('day', '')
-                task = row.get('task', '')
-                hours = row.get('hours', row.get('duration', ''))
-                content += f"{day}: {task} ({hours}ч)\n"
-            else:
-                content += " | ".join(str(v) for v in row.values) + "\n"
-        
-        return content
-    except Exception as e:
-        return f"Ошибка чтения CSV: {str(e)}"
+        return "❌ Файл не найден"
 
+    if pd is None:
+        return "❌ pandas не установлен"
+
+    try:
+        df = pd.read_csv(file_path)
+
+        if df.empty:
+            return "⚠️ CSV файл пустой"
+
+        content = "📋 CSV:\n\n"
+        for _, row in df.iterrows():
+            content += " | ".join(str(v) for v in row.values) + "\n"
+
+        return content
+
+    except Exception as e:
+        return f"❌ Ошибка чтения CSV: {str(e)}"
+
+
+# ===== EXCEL =====
 
 def parse_excel_file(file_path: str) -> str:
-    """Чтение Excel файла"""
     if not os.path.exists(file_path):
-        return ""
-    
-    try:
-        df = pd.read_excel(file_path, engine='openpyxl')
-        
-        content = "📊 Расписание из Excel:\n\n"
-        for _, row in df.iterrows():
-            if 'day' in df.columns and 'task' in df.columns:
-                day = row.get('day', '')
-                task = row.get('task', '')
-                hours = row.get('hours', row.get('duration', ''))
-                content += f"{day}: {task} ({hours}ч)\n"
-            else:
-                content += " | ".join(str(v) for v in row.values) + "\n"
-        
-        return content
-    except Exception as e:
-        return f"Ошибка чтения Excel: {str(e)}"
+        return "❌ Файл не найден"
 
+    if pd is None:
+        return "❌ pandas не установлен"
+
+    try:
+        df = pd.read_excel(file_path)
+
+        if df.empty:
+            return "⚠️ Excel файл пустой"
+
+        content = "📊 Excel:\n\n"
+        for _, row in df.iterrows():
+            content += " | ".join(str(v) for v in row.values) + "\n"
+
+        return content
+
+    except Exception as e:
+        return f"❌ Ошибка чтения Excel: {str(e)}"
+
+
+# ===== PDF =====
 
 def parse_pdf_file(file_path: str) -> str:
-    """Чтение PDF файла (только текст, без картинок)"""
     if not os.path.exists(file_path):
-        return ""
-    
+        return "❌ Файл не найден"
+
+    if PdfReader is None:
+        return "❌ PyPDF2 не установлен"
+
     try:
         reader = PdfReader(file_path)
-        content = "📄 Расписание из PDF:\n\n"
-        
-        if len(reader.pages) == 0:
-            return "PDF пустой"
-        
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                content += text + "\n"
-        
-        if len(content.strip()) < 50:
-            return "⚠️ PDF содержит мало текста. Возможно, это скан изображения."
-        
-        return content
-    except Exception as e:
-        return f"Ошибка чтения PDF: {str(e)}"
 
+        if not reader.pages:
+            return "⚠️ PDF пустой"
+
+        text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+
+        if not text.strip():
+            return "⚠️ PDF без текста (возможно скан)"
+
+        return text
+
+    except Exception as e:
+        return f"❌ Ошибка чтения PDF: {str(e)}"
+
+
+# ===== ОБЩИЙ ПАРСЕР =====
 
 def parse_file(file_path: str, file_type: str) -> str:
-    """Универсальный парсер файлов"""
+    file_type = file_type.lower().replace('.', '')
+
     parsers = {
         'txt': parse_text_file,
         'csv': parse_csv_file,
@@ -102,42 +118,38 @@ def parse_file(file_path: str, file_type: str) -> str:
         'xls': parse_excel_file,
         'pdf': parse_pdf_file
     }
-    
-    file_type = file_type.lower().strip('.')
-    
-    if file_type in parsers:
-        return parsers[file_type](file_path)
-    else:
-        return f"❌ Неподдерживаемый формат: {file_type}"
 
+    parser = parsers.get(file_type)
+
+    if not parser:
+        return f"❌ Формат не поддерживается: {file_type}"
+
+    return parser(file_path)
+
+
+# ===== ВАЛИДАЦИЯ =====
 
 def validate_file(file_path: str, max_size_mb: int = 10) -> Dict:
-    """Валидация файла перед загрузкой"""
-    result = {
-        'valid': False,
-        'error': None,
-        'size_mb': 0,
-        'type': None
-    }
-    
     if not os.path.exists(file_path):
-        result['error'] = "Файл не найден"
-        return result
-    
-    size_mb = os.path.getsize(file_path) / (1024 * 1024)
-    result['size_mb'] = size_mb
-    
+        return {'valid': False, 'error': 'Файл не найден'}
+
+    try:
+        size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    except:
+        return {'valid': False, 'error': 'Ошибка чтения файла'}
+
     if size_mb > max_size_mb:
-        result['error'] = f"Файл слишком большой ({size_mb:.1f} МБ)"
-        return result
-    
-    allowed_extensions = ['.txt', '.csv', '.xlsx', '.xls', '.pdf']
+        return {'valid': False, 'error': f'Файл слишком большой ({size_mb:.1f} МБ)'}
+
     ext = os.path.splitext(file_path)[1].lower()
-    
-    if ext not in allowed_extensions:
-        result['error'] = f"Неподдерживаемый формат: {ext}"
-        return result
-    
-    result['valid'] = True
-    result['type'] = ext[1:]
-    return result
+
+    allowed = ['.txt', '.csv', '.xlsx', '.xls', '.pdf']
+
+    if ext not in allowed:
+        return {'valid': False, 'error': f'Неподдерживаемый формат {ext}'}
+
+    return {
+        'valid': True,
+        'type': ext.replace('.', ''),
+        'size_mb': size_mb
+    }

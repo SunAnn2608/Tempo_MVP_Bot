@@ -1,78 +1,101 @@
-"""
-🔔 Tempo Bot — Система напоминаний
-"""
-
 import random
-from datetime import datetime, time
-from telegram.ext import JobQueue
+from datetime import datetime, timedelta
+
+import config
+
+
+# ===== НАСТРОЙКИ =====
+
+START_HOUR = 8
+END_HOUR = 22
+INTERVAL_MINUTES = 45 # можно менять
+
+
+# ===== ТЕКСТЫ =====
 
 REMINDERS = {
     'microbreak': [
-        "☕ Время для микро-паузы! Отойди от экрана на 2 минуты",
-        "🧘‍♀️ Сделай глубокий вдох и выдох. Ты молодец!",
-        "💧 Выпей стакан воды — организм скажет спасибо",
-        "👀 Посмотри в окно 20 секунд — дай глазам отдых",
-        "🚶‍♀️ Встань и пройдись по комнате — разгони кровь"
+        "☕ Сделай микро-паузу на пару минут",
+        "🧘‍♀️ Сделай глубокий вдох и выдох",
+        "👀 Дай глазам отдохнуть — посмотри вдаль",
+        "🚶‍♀️ Встань и немного пройдись"
     ],
     'stretch': [
-        "💆 Потянись! Подними руки вверх и потянись к потолку",
-        "🤸‍♀️ Сделай круговые движения плечами — 5 раз в каждую сторону",
-        "🧘 Наклоны головы: медленно вправо-влево, 3 раза",
-        "💪 Разомни кисти рук — сожми и разожми кулаки 10 раз",
-        "🦵 Встань и сделай 5 приседаний — тело скажет спасибо"
+        "💆 Потянись — тело скажет спасибо",
+        "🤸‍♀️ Разомни плечи и шею",
+        "🧘 Сделай пару лёгких движений"
     ],
     'fresh_air': [
-        "🌿 Выйди на улицу на 5 минут — свежий воздух перезагрузит мозг",
-        "🪟 Открой окно и подыши свежим воздухом 2 минуты",
-        "🌳 Посмотри на что-то зелёное — это успокаивает глаза",
-        "☀️ Если есть солнце — подставь лицо на минуту",
-        "🌬️ Сделай 5 глубоких вдохов свежим воздухом"
+        "🌿 Выйди на свежий воздух на пару минут",
+        "🪟 Открой окно и подыши",
+        "🌳 Посмотри на что-то зелёное"
     ],
     'water': [
-        "💧 Время попить воды! Стакан рядом?",
-        "🥤 Гидратация — залог энергии. Выпей воды!",
-        "💦 Твоему организму нужна вода. Сделай несколько глотков",
-        "🚰 Поставь напоминание пить воду каждый час",
-        "🌊 Вода помогает мозгу работать лучше. Попей сейчас!"
+        "💧 Выпей воды",
+        "🥤 Гидратация = энергия",
+        "🌊 Попей воды прямо сейчас"
     ],
     'motivation': [
-        "✨ Ты молодец! Продолжай заботиться о себе",
-        "🌟 5 минут в день — и ты в балансе. Так держать!",
-        "💚 Каждая микро-пауза — это инвестиция в твоё здоровье",
-        "🎵 Tempo гордится тобой! Ты на правильном пути",
-        "🌈 Помни: отдых — это часть продуктивности"
+        "✨ Ты хорошо справляешься",
+        "💚 Маленькие паузы — большой результат",
+        "🎵 Ты в процессе — и это уже круто"
     ]
 }
 
-REMINDER_SCHEDULE = {
-    'morning': {'time': time(10, 0), 'types': ['microbreak', 'water', 'motivation']},
-    'afternoon': {'time': time(14, 0), 'types': ['stretch', 'fresh_air']},
-    'evening': {'time': time(17, 0), 'types': ['microbreak', 'water', 'motivation']}
-}
+
+# ===== ЛОГИКА =====
+
+def get_random_reminder():
+    category = random.choice(list(REMINDERS.keys()))
+    return random.choice(REMINDERS[category])
 
 
-def get_random_reminder(category: str = None) -> str:
-    """Получение случайного напоминания"""
-    if category and category in REMINDERS:
-        return random.choice(REMINDERS[category])
-    else:
-        all_reminders = []
-        for reminders in REMINDERS.values():
-            all_reminders.extend(reminders)
-        return random.choice(all_reminders)
+def is_allowed_time(user_hour: int) -> bool:
+    return START_HOUR <= user_hour < END_HOUR
 
 
-def get_reminder_by_time() -> tuple:
-    """Напоминание по времени суток"""
-    current_hour = datetime.now().hour
-    
-    if 9 <= current_hour < 12:
-        category = random.choice(['microbreak', 'water', 'motivation'])
-    elif 12 <= current_hour < 15:
-        category = random.choice(['stretch', 'fresh_air'])
-    elif 15 <= current_hour < 18:
-        category = random.choice(['microbreak', 'water', 'motivation'])
-    else:
-        category = 'motivation'
-    
-    return get_random_reminder(category), category
+# ===== РЕГУЛЯРНАЯ ЗАДАЧА =====
+
+async def send_reminder(context):
+    job = context.job
+    user_id = job.chat_id
+
+    now = datetime.now()
+    hour = now.hour
+
+    if not is_allowed_time(hour):
+        return
+
+    text = get_random_reminder()
+
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"{text}\n\n🎵 Не забывай отдыхать"
+        )
+    except:
+        pass
+
+
+# ===== ЗАПУСК РАСПИСАНИЯ =====
+
+def schedule_reminders(application, user_id):
+    """
+    Запускает напоминания каждые N минут
+    """
+
+    job_queue = application.job_queue
+
+    # удаляем старые задачи (если есть)
+    current_jobs = job_queue.get_jobs_by_name(str(user_id))
+    for job in current_jobs:
+        job.schedule_removal()
+
+    # запускаем новую
+    job_queue.run_repeating(
+        send_reminder,
+        interval=timedelta(minutes=INTERVAL_MINUTES),
+        first=10,
+        chat_id=user_id,
+        name=str(user_id)
+    )
