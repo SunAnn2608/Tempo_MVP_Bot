@@ -30,9 +30,9 @@ DAYS_EN = [
 ]
 
 PRACTICES = {
-    "p1": {"name": "🫁 Дыхание 4-7-8", "audio": "p1.ogg", "image": "p1.png"},
-    "p2": {"name": "🌅 Мягкое пробуждение", "audio": "p2.ogg", "image": "p2.png"},
-    "p3": {"name": "🌙 Спокойный сон", "audio": "p3.ogg", "image": "p3.png"},
-    "p4": {"name": "💆 Снять напряжение", "audio": "p4.ogg", "image": "p4.png"},
-    "p5": {"name": "🎯 Глубокий фокус", "audio": "p5.ogg", "image": "p5.png"},
+    "p1": {"name": "🫁 Дыхание 4-7-8", "audio": "p1.mp3", "image": "p1.png"},
+    "p2": {"name": "🌅 Мягкое пробуждение", "audio": "p2.mp3", "image": "p2.png"},
+    "p3": {"name": "🌙 Спокойный сон", "audio": "p3.mp3", "image": "p3.png"},
+    "p4": {"name": "💆 Снять напряжение", "audio": "p4.mp3", "image": "p4.png"},
+    "p5": {"name": "🎯 Глубокий фокус", "audio": "p5.mp3", "image": "p5.png"},
 }

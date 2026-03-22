@@ -19,7 +19,6 @@ from telegram.ext import (
 
 import config
 from task_manager import *
-from ai_analyzer import *
 from reminders import schedule_reminders
 
 
@@ -138,28 +137,25 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # КАРТИНКА
         if os.path.exists(image_path):
-            try:
-                await context.bot.send_photo(
-                    chat_id=user_id,
-                    photo=InputFile(image_path),
-                    caption=f"{practice['name']}\n\n🎧 5 минут для тебя"
-                )
-            except Exception as e:
-                print("IMG ERROR:", e)
-                await query.message.reply_text(practice["name"])
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=InputFile(image_path),
+                caption=f"{practice['name']}\n\n🎧 Практика на 5 минут"
+            )
         else:
             await query.message.reply_text("⚠️ Картинка не найдена")
 
-        # АУДИО
+        # АУДИО (MP3)
         if os.path.exists(audio_path):
             try:
-                await context.bot.send_voice(
+                await context.bot.send_audio(
                     chat_id=user_id,
-                    voice=InputFile(audio_path)
+                    audio=InputFile(audio_path),
+                    title=practice["name"]
                 )
             except Exception as e:
                 print("AUDIO ERROR:", e)
-                await query.message.reply_text("⚠️ Ошибка аудио")
+                await query.message.reply_text("⚠️ Не удалось отправить аудио")
         else:
             await query.message.reply_text("⚠️ Аудио не найдено")
 
@@ -200,12 +196,10 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = context.user_data.get("step")
 
-    # настроение
     if msg in ["😌 Спокойно", "😐 Нормально", "😣 Перегруз"]:
         await update.message.reply_text("Ок, давай работать", reply_markup=main_keyboard())
         return
 
-    # добавление задачи
     if step == "title":
         context.user_data["title"] = msg
         context.user_data["step"] = "day"
@@ -229,7 +223,6 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Задача добавлена", reply_markup=main_keyboard())
         return
 
-    # меню
     if msg == "📋 Задачи":
         await update.message.reply_text("Управление задачами:", reply_markup=tasks_keyboard())
 
