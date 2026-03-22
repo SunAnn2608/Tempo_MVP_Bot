@@ -1,9 +1,21 @@
 import os
 import traceback
-from collections import defaultdict
 
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile
+)
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+    ContextTypes
+)
 
 import config
 from task_manager import *
@@ -50,21 +62,24 @@ def resources_keyboard():
     ])
 
 
-# ===== ОШИБКА =====
+# ===== ERROR HANDLER =====
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print("Ошибка:", context.error)
+    print("ERROR:", context.error)
     traceback.print_exc()
 
     try:
         chat_id = update.effective_chat.id
-
         img = os.path.join(config.IMAGES_DIR, "error.png")
 
         text = "🎵 Tempo временно недоступен\nМы уже всё чиним 💚"
 
         if os.path.exists(img):
-            await context.bot.send_photo(chat_id=chat_id, photo=open(img, "rb"), caption=text)
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=InputFile(img),
+                caption=text
+            )
         else:
             await context.bot.send_message(chat_id=chat_id, text=text)
 
@@ -72,7 +87,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         print("error handler failed:", e)
 
 
-# ===== СТАРТ =====
+# ===== START =====
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -83,18 +98,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         f"Привет, {user.first_name} 👋\n\n"
-        "Я помогаю навести порядок в задачах\n"
-        "и не выгореть по дороге.\n\n"
-        "Как ты сейчас себя чувствуешь?"
+        "Я помогу тебе не выгореть и навести порядок в задачах.\n\n"
+        "Как ты себя чувствуешь сейчас?"
     )
 
     if os.path.exists(img):
-        await update.message.reply_photo(photo=open(img, "rb"), caption=text, reply_markup=mood_keyboard())
+        await update.message.reply_photo(
+            photo=InputFile(img),
+            caption=text,
+            reply_markup=mood_keyboard()
+        )
     else:
         await update.message.reply_text(text, reply_markup=mood_keyboard())
 
 
-# ===== КНОПКИ =====
+# ===== CALLBACK =====
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -103,42 +121,78 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
 
+    # ===== ПРАКТИКИ =====
     if data.startswith("p_"):
-        p = config.PRACTICES[data.split("_")[1]]
+        key = data.split("_")[1]
+        practice = config.PRACTICES.get(key)
 
-        await query.message.reply_photo(
-            photo=open(os.path.join(config.IMAGES_DIR, p["image"]), "rb")
-        )
+        if not practice:
+            await query.message.reply_text("❌ Практика не найдена")
+            return
 
-        await context.bot.send_voice(
-            chat_id=user_id,
-            voice=open(os.path.join(config.AUDIO_DIR, p["audio"]), "rb")
-        )
+        image_path = os.path.join(config.IMAGES_DIR, practice["image"])
+        audio_path = os.path.join(config.AUDIO_DIR, practice["audio"])
 
+        print("IMAGE:", image_path, os.path.exists(image_path))
+        print("AUDIO:", audio_path, os.path.exists(audio_path))
+
+        # КАРТИНКА
+        if os.path.exists(image_path):
+            try:
+                await context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=InputFile(image_path),
+                    caption=f"{practice['name']}\n\n🎧 5 минут для тебя"
+                )
+            except Exception as e:
+                print("IMG ERROR:", e)
+                await query.message.reply_text(practice["name"])
+        else:
+            await query.message.reply_text("⚠️ Картинка не найдена")
+
+        # АУДИО
+        if os.path.exists(audio_path):
+            try:
+                await context.bot.send_voice(
+                    chat_id=user_id,
+                    voice=InputFile(audio_path)
+                )
+            except Exception as e:
+                print("AUDIO ERROR:", e)
+                await query.message.reply_text("⚠️ Ошибка аудио")
+        else:
+            await query.message.reply_text("⚠️ Аудио не найдено")
+
+    # ===== PDF =====
     elif data == "tracker":
-        await context.bot.send_document(chat_id=user_id, document=open(os.path.join(config.PDF_DIR, "tracker.pdf"), "rb"))
+        await context.bot.send_document(
+            chat_id=user_id,
+            document=InputFile(os.path.join(config.PDF_DIR, "tracker.pdf"))
+        )
 
     elif data == "guide":
-        await context.bot.send_document(chat_id=user_id, document=open(os.path.join(config.PDF_DIR, "guide.pdf"), "rb"))
+        await context.bot.send_document(
+            chat_id=user_id,
+            document=InputFile(os.path.join(config.PDF_DIR, "guide.pdf"))
+        )
 
+    # ===== TASKS =====
     elif data == "add_task":
         context.user_data["step"] = "title"
-        await query.message.reply_text("Название задачи:")
+        await query.message.reply_text("Введите название задачи:")
 
     elif data == "list_tasks":
-        tasks = get_user_tasks(user_id)
-        text = get_tasks_summary(user_id)
-        await query.message.reply_text(text)
+        await query.message.reply_text(get_tasks_summary(user_id))
 
     elif data == "clear_tasks":
         clear_all_tasks(user_id)
-        await query.message.reply_text("🧹 Очищено")
+        await query.message.reply_text("🧹 Все задачи удалены")
 
     elif data == "back":
         await query.message.reply_text("Меню", reply_markup=main_keyboard())
 
 
-# ===== ТЕКСТ =====
+# ===== TEXT =====
 
 async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
@@ -146,22 +200,16 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = context.user_data.get("step")
 
-    if msg == "😣 Перегруз":
-        await update.message.reply_text("Давай снизим нагрузку", reply_markup=main_keyboard())
+    # настроение
+    if msg in ["😌 Спокойно", "😐 Нормально", "😣 Перегруз"]:
+        await update.message.reply_text("Ок, давай работать", reply_markup=main_keyboard())
         return
 
-    if msg == "😐 Нормально":
-        await update.message.reply_text("Ок, посмотрим задачи", reply_markup=main_keyboard())
-        return
-
-    if msg == "😌 Спокойно":
-        await update.message.reply_text("Супер, закрепим баланс", reply_markup=main_keyboard())
-        return
-
+    # добавление задачи
     if step == "title":
         context.user_data["title"] = msg
         context.user_data["step"] = "day"
-        await update.message.reply_text("День (Monday):")
+        await update.message.reply_text("Введите день (например Monday):")
         return
 
     if step == "day":
@@ -178,14 +226,15 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
 
         context.user_data.clear()
-        await update.message.reply_text("✅ Добавлено", reply_markup=main_keyboard())
+        await update.message.reply_text("✅ Задача добавлена", reply_markup=main_keyboard())
         return
 
+    # меню
     if msg == "📋 Задачи":
-        await update.message.reply_text("Управление:", reply_markup=tasks_keyboard())
+        await update.message.reply_text("Управление задачами:", reply_markup=tasks_keyboard())
 
     elif msg == "🎧 Практики":
-        await update.message.reply_text("Выбери:", reply_markup=practices_keyboard())
+        await update.message.reply_text("Выбери практику:", reply_markup=practices_keyboard())
 
     elif msg == "📥 Материалы":
         await update.message.reply_text("Материалы:", reply_markup=resources_keyboard())
@@ -209,7 +258,7 @@ def main():
 
     app.add_error_handler(error_handler)
 
-    print("бот запущен")
+    print("🚀 бот запущен")
     app.run_polling()
 
 
