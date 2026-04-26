@@ -13,10 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_data_dir():
+    """Создание папки data, если не существует"""
     config.DATA_DIR.mkdir(exist_ok=True)
 
 
 def load_data():
+    """Чтение данных из JSON-файла"""
     ensure_data_dir()
     
     if config.DATA_FILE.exists():
@@ -34,6 +36,7 @@ def load_data():
 
 
 def save_data(data):
+    """Сохранение данных в JSON-файл"""
     ensure_data_dir()
     
     try:
@@ -46,6 +49,7 @@ def save_data(data):
 
 
 def add_task(user_id, task):
+    """Добавление задачи пользователю"""
     try:
         logger.info(f"add_task вызван для user_id={user_id}, task={task}")
         
@@ -79,3 +83,58 @@ def add_task(user_id, task):
     except Exception as e:
         logger.error(f"Ошибка в add_task: {e}", exc_info=True)
         raise
+
+
+def get_tasks_summary(user_id):
+    """Получение сводки по задачам"""
+    data = load_data()
+    user_id = str(user_id)
+    
+    tasks = data["users"].get(user_id, {}).get("tasks", [])
+    
+    if not tasks:
+        return "📭 Нет задач. Добавьте первую!"
+    
+    text = "📋 Ваши задачи:\n\n"
+    for i, t in enumerate(tasks, 1):
+        priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.get("priority"), "⚪")
+        text += f"{i}. {priority_icon} {t['title']} ({t.get('duration_hours', 1)}ч)\n"
+    
+    total = sum(t.get("duration_hours", 1) for t in tasks)
+    text += f"\n⏱️ Всего: {total} ч"
+    
+    if total > config.MAX_TASKS_PER_DAY:
+        text += "\n\n⚠️ Нагрузка выше нормы!"
+    
+    return text
+
+
+def clear_all_tasks(user_id):
+    """Очистка всех задач пользователя"""
+    data = load_data()
+    user_id = str(user_id)
+    
+    if user_id in data["users"]:
+        data["users"][user_id]["tasks"] = []
+        save_data(data)
+        return True
+    return False
+
+
+def get_task_statistics(user_id):
+    """Статистика по задачам"""
+    data = load_data()
+    user_id = str(user_id)
+    
+    tasks = data["users"].get(user_id, {}).get("tasks", [])
+    
+    return {
+        "total": len(tasks),
+        "total_hours": sum(t.get("duration_hours", 1) for t in tasks),
+        "by_priority": {
+            "high": sum(1 for t in tasks if t.get("priority") == "high"),
+            "medium": sum(1 for t in tasks if t.get("priority") == "medium"),
+            "low": sum(1 for t in tasks if t.get("priority") == "low"),
+        }
+    }
+    
