@@ -196,6 +196,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         
         logger.info(f"Текст от {user_id}: {msg}")
+        logger.info(f"Текущий step: {context.user_data.get('step')}")
         
         if msg == "📋 Задачи":
             await update.message.reply_text(
@@ -226,34 +227,68 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not sent:
                 await update.message.reply_text("⏳ Материалы в подготовке. Загляните позже!")
         
+        # ===== ДОБАВЛЕНИЕ ЗАДАЧИ =====
         elif context.user_data.get("step") == "title":
-            if len(msg.strip()) < 2:
-                await update.message.reply_text("❌ Название слишком короткое")
-                return
-            
-            result = add_task(user_id, {"title": msg.strip()})
-            context.user_data.clear()
-            
-            await update.message.reply_text(
-                f"{result['message']}\n\n✨ {msg.strip()[:30]}...",
-                reply_markup=main_keyboard(),
-            )
+            try:
+                logger.info(f"Попытка добавить задачу: {msg}")
+                
+                if len(msg.strip()) < 2:
+                    await update.message.reply_text("❌ Название слишком короткое")
+                    return
+                
+                # Создаем задачу с минимальными данными
+                task_data = {
+                    "title": msg.strip(),
+                    "duration_hours": 1,
+                    "day": "Monday",
+                    "priority": "medium"
+                }
+                
+                logger.info(f"Данные задачи: {task_data}")
+                
+                result = add_task(user_id, task_data)
+                
+                logger.info(f"Результат добавления: {result}")
+                
+                context.user_data.clear()
+                
+                await update.message.reply_text(
+                    f"{result['message']}\n\n✨ {msg.strip()[:50]}",
+                    reply_markup=main_keyboard(),
+                )
+                
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении задачи: {e}", exc_info=True)
+                await update.message.reply_text(
+                    f"❌ Не удалось добавить задачу.\n\n"
+                    f"Ошибка: {str(e)}\n\n"
+                    f"Попробуйте ещё раз или перезапустите бота /start"
+                )
+                context.user_data.clear()
         
+        # ===== AI-АНАЛИЗ =====
         elif context.user_data.get("step") == "ai_input":
-            if len(msg.strip()) < 20:
-                await update.message.reply_text("❌ Слишком мало данных. Опишите расписание подробнее.")
-                return
-            
-            await update.message.reply_text("🤖 Анализирую...")
-            
-            result = analyze_schedule(msg)
-            formatted = format_analysis_result(result)
-            
-            await update.message.reply_text(formatted)
-            
-            save_analysis_history(user_id, msg, result)
-            context.user_data.clear()
+            try:
+                if len(msg.strip()) < 20:
+                    await update.message.reply_text("❌ Слишком мало данных. Опишите расписание подробнее.")
+                    return
+                
+                await update.message.reply_text("🤖 Анализирую...")
+                
+                result = analyze_schedule(msg)
+                formatted = format_analysis_result(result)
+                
+                await update.message.reply_text(formatted)
+                
+                save_analysis_history(user_id, msg, result)
+                context.user_data.clear()
+                
+            except Exception as e:
+                logger.error(f"Ошибка AI-анализа: {e}", exc_info=True)
+                await update.message.reply_text("❌ Ошибка при анализе. Попробуйте ещё раз.")
+                context.user_data.clear()
         
+        # ===== УПРАВЛЕНИЕ НАПОМИНАНИЯМИ =====
         elif msg.lower() in ["напоминания вкл", "включить напоминания", "/reminders_on"]:
             toggle_reminders(user_id, True)
             await update.message.reply_text("🔔 Напоминания включены!")
@@ -269,8 +304,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     
     except Exception as e:
-        logger.error(f"Ошибка в handle_text: {e}", exc_info=True)
-        await update.message.reply_text("⚠️ Произошла ошибка. Попробуйте ещё раз.")
+        logger.error(f"Критическая ошибка в handle_text: {e}", exc_info=True)
+        await update.message.reply_text(
+            "⚠️ Произошла ошибка.\n\n"
+            f"Детали: {str(e)}\n\n"
+            "Попробуйте /start для перезапуска"
+        )
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
