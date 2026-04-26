@@ -236,7 +236,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Название слишком короткое")
                     return
                 
-                # Создаем задачу с минимальными данными
                 task_data = {
                     "title": msg.strip(),
                     "duration_hours": 1,
