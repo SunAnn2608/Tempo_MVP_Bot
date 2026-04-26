@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения
 load_dotenv()
 
 # ===== ТОКЕН БОТА =====
@@ -15,7 +14,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ TELEGRAM_TOKEN не найден в переменных окружения")
 
-# ===== БАЗОВАЯ ДИРЕКТОРИЯ (работает на хостинге и локально) =====
+# ===== БАЗОВАЯ ДИРЕКТОРИЯ =====
 BASE_DIR = Path(__file__).resolve().parent
 
 # ===== ПУТИ К РЕСУРСАМ =====
@@ -30,7 +29,7 @@ DATA_FILE = DATA_DIR / "data.json"
 IDEAL_TASKS_PER_DAY = 5
 MAX_TASKS_PER_DAY = 10
 
-# ===== 5 ПРАКТИК (словарь — ТРЕБОВАНИЕ 2) =====
+# ===== 5 ПРАКТИК =====
 PRACTICES = {
     "p1": {
         "name": "🫁 Дыхание 4-7-8",
@@ -63,3 +62,5 @@ PRACTICES = {
         "desc": "Концентрация внимания"
     },
 }
+
+USP = "✨ 5 минут в день для профилактики выгорания"
