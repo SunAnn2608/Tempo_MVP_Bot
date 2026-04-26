@@ -56,10 +56,17 @@ def add_task(user_id, task):
         data = load_data()
         user_id = str(user_id)
         
+        # Создаём пользователя, если не существует
         if user_id not in data["users"]:
             logger.info(f"Создаю нового пользователя {user_id}")
-            data["users"][user_id] = {"tasks": []}
+            data["users"][user_id] = {}
         
+        # Гарантируем наличие ключа "tasks"
+        if "tasks" not in data["users"][user_id]:
+            logger.info(f"Создаю список задач для пользователя {user_id}")
+            data["users"][user_id]["tasks"] = []
+        
+        # Создаём задачу
         task_with_meta = {
             "title": task.get("title", "Без названия"),
             "duration_hours": task.get("duration_hours", 1),
@@ -70,8 +77,10 @@ def add_task(user_id, task):
         
         logger.info(f"Добавляю задачу: {task_with_meta}")
         
+        # Добавляем задачу
         data["users"][user_id]["tasks"].append(task_with_meta)
         
+        # Сохраняем
         save_result = save_data(data)
         logger.info(f"save_data вернул: {save_result}")
         
@@ -80,6 +89,9 @@ def add_task(user_id, task):
         
         return {"message": "✅ Задача добавлена", "task": task_with_meta}
         
+    except KeyError as e:
+        logger.error(f"KeyError в add_task: {e}", exc_info=True)
+        raise Exception(f"Отсутствует ключ в данных: {e}")
     except Exception as e:
         logger.error(f"Ошибка в add_task: {e}", exc_info=True)
         raise
@@ -90,7 +102,9 @@ def get_tasks_summary(user_id):
     data = load_data()
     user_id = str(user_id)
     
-    tasks = data["users"].get(user_id, {}).get("tasks", [])
+    # Безопасное получение задач
+    user_data = data["users"].get(user_id, {})
+    tasks = user_data.get("tasks", [])
     
     if not tasks:
         return "📭 Нет задач. Добавьте первую!"
@@ -115,7 +129,11 @@ def clear_all_tasks(user_id):
     user_id = str(user_id)
     
     if user_id in data["users"]:
-        data["users"][user_id]["tasks"] = []
+        # Гарантируем наличие ключа tasks
+        if "tasks" not in data["users"][user_id]:
+            data["users"][user_id]["tasks"] = []
+        else:
+            data["users"][user_id]["tasks"] = []
         save_data(data)
         return True
     return False
@@ -126,7 +144,9 @@ def get_task_statistics(user_id):
     data = load_data()
     user_id = str(user_id)
     
-    tasks = data["users"].get(user_id, {}).get("tasks", [])
+    # Безопасное получение
+    user_data = data["users"].get(user_id, {})
+    tasks = user_data.get("tasks", [])
     
     return {
         "total": len(tasks),
@@ -137,4 +157,3 @@ def get_task_statistics(user_id):
             "low": sum(1 for t in tasks if t.get("priority") == "low"),
         }
     }
-    
