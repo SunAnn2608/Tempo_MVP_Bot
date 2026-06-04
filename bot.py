@@ -312,7 +312,9 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Практики ─────────────────────────────────────────────────
     if data.startswith("p_"):
-        key      = "p" + data.split("_")[1]
+        # callback_data может быть "p_1" или "p_p1" — нормализуем
+        raw = data[2:]  # всё после "p_"
+        key = raw if raw.startswith("p") else "p" + raw
         practice = config.PRACTICES.get(key)
         if not practice:
             await query.edit_message_text("❌ Практика не найдена")
