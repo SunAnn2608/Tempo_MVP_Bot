@@ -114,8 +114,8 @@ def send_audio(user_id: int, audio_path: str, caption: str = ""):
         send(user_id, "⚠️ Аудио недоступно")
         return
     try:
-        # Шаг 1: получаем URL для загрузки
-        upload_data = vk.docs.getMessagesUploadServer(peer_id=user_id, type="audio_message")
+        # Шаг 1: получаем URL для загрузки как обычный документ
+        upload_data = vk.docs.getMessagesUploadServer(peer_id=user_id, type="doc")
         upload_url  = upload_data["upload_url"]
 
         # Шаг 2: загружаем файл
@@ -128,7 +128,7 @@ def send_audio(user_id: int, audio_path: str, caption: str = ""):
 
         # Шаг 3: сохраняем документ
         saved = vk.docs.save(file=result["file"], title=path.stem)
-        doc   = saved["audio_message"] if "audio_message" in saved else saved.get("doc", {})
+        doc   = saved.get("doc", {})
         attachment = "doc{}_{}".format(doc["owner_id"], doc["id"])
 
         # Шаг 4: отправляем
