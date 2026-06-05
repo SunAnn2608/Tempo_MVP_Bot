@@ -86,13 +86,15 @@ def send(user_id: int, text: str, keyboard=None):
 
 def send_photo(user_id: int, photo_path: str, caption: str = ""):
     """Загрузить и отправить фото."""
-    if not Path(photo_path).exists():
+    path = Path(photo_path)
+    if not path.exists():
+        logger.warning(f"Файл не найден: {photo_path}")
         send(user_id, "⚠️ Изображение недоступно")
         return
     try:
         upload     = vk_api.VkUpload(vk_session)
-        photo_info = upload.photo_messages(photo_path)[0]
-        attachment = f"photo{photo_info['owner_id']}_{photo_info['id']}"
+        photo_info = upload.photo_messages(str(path))[0]
+        attachment = "photo{}_{}".format(photo_info["owner_id"], photo_info["id"])
         vk.messages.send(
             user_id=user_id,
             message=caption,
@@ -101,18 +103,25 @@ def send_photo(user_id: int, photo_path: str, caption: str = ""):
         )
     except Exception as e:
         logger.error(f"Ошибка отправки фото: {e}")
-        send(user_id, "⚠️ Ошибка отправки изображения")
 
 
 def send_audio(user_id: int, audio_path: str, caption: str = ""):
-    """Отправить аудио как документ (ВК не принимает сторонние аудио через API)."""
-    if not Path(audio_path).exists():
+    """Отправить аудио как документ через правильный peer_id."""
+    path = Path(audio_path)
+    if not path.exists():
+        logger.warning(f"Файл не найден: {audio_path}")
         send(user_id, "⚠️ Аудио недоступно")
         return
     try:
-        upload    = vk_api.VkUpload(vk_session)
-        doc_info  = upload.document_message(audio_path, peer_id=user_id)
-        attachment = f"doc{doc_info['owner_id']}_{doc_info['id']}"
+        # peer_id для личных сообщений = user_id
+        peer_id  = user_id
+        upload   = vk_api.VkUpload(vk_session)
+        doc_info = upload.document_message(
+            str(path),
+            peer_id=peer_id,
+            title=path.stem,
+        )
+        attachment = "doc{}_{}".format(doc_info["owner_id"], doc_info["id"])
         vk.messages.send(
             user_id=user_id,
             message=caption,
@@ -121,7 +130,8 @@ def send_audio(user_id: int, audio_path: str, caption: str = ""):
         )
     except Exception as e:
         logger.error(f"Ошибка отправки аудио: {e}")
-        send(user_id, "⚠️ Ошибка отправки аудио")
+        # Отправляем текст с описанием практики как fallback
+        send(user_id, f"🎧 Аудио временно недоступно. Практику можно найти в приложении.")
 
 
 def get_state(user_id: int) -> dict:
