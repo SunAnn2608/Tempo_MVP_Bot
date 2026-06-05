@@ -1,201 +1,187 @@
+"""
+📋 Tempo Bot — Управление задачами
+
+Пошаговое добавление: название → приоритет → часы → день недели.
+Поддержка: отметка выполненных, редактирование полей, статистика.
+Хранение: data/data.json, ключ по user_id.
+"""
+
 import json
-import os
+import logging
 from datetime import datetime
-from typing import Dict, Optional
 
 import config
 
-DATA_FILE = 'data.json'
+logger = logging.getLogger(__name__)
+
+PRIORITY_ICON  = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+PRIORITY_LABEL = {"high": "Высокий", "medium": "Средний", "low": "Низкий"}
+
+# ===== JSON-ХРАНИЛИЩЕ =====
+
+def ensure_data_dir():
+    config.DATA_DIR.mkdir(exist_ok=True)
 
 
-# ===== БАЗА =====
-
-def load_data() -> Dict:
-    if os.path.exists(DATA_FILE):
+def load_data() -> dict:
+    ensure_data_dir()
+    if config.DATA_FILE.exists():
         try:
-            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            with open(config.DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
-            return {'users': {}}
-    return {'users': {}}
+        except json.JSONDecodeError:
+            logger.error("data.json повреждён — сброс")
+        except Exception as e:
+            logger.error(f"Ошибка загрузки data.json: {e}")
+    return {"users": {}}
 
 
-def save_data(data: Dict):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-# ===== ПОЛЬЗОВАТЕЛЬ =====
-
-def get_user_data(user_id: int) -> Dict:
-    data = load_data()
-    user_key = str(user_id)
-
-    if user_key not in data['users']:
-        data['users'][user_key] = {
-            'tasks': {'daily': {}, 'weekly': {}},
-            'settings': {'planning_mode': 'weekly', 'reminders_enabled': True},
-            'stats': {
-                'tasks_added': 0,
-                'tasks_completed': 0,
-                'tasks_edited': 0,
-                'tasks_deleted': 0
-            }
-        }
-        save_data(data)
-
-    return data['users'][user_key]
-
-
-def get_user_tasks(user_id: int, planning_mode: str = 'weekly') -> Dict:
-    user = get_user_data(user_id)
-    return user['tasks'].get(planning_mode, {})
-
-
-# ===== CRUD =====
-
-def add_task(user_id: int, task_data: Dict, planning_mode: str = 'weekly') -> Dict:
-    data = load_data()
-    user_key = str(user_id)
-
-    if user_key not in data['users']:
-        data['users'][user_key] = get_user_data(user_id)
-
-    user = data['users'][user_key]
-    tasks = user['tasks'].setdefault(planning_mode, {})
-
-    # ===== ПРОВЕРКА ПЕРЕГРУЗА =====
-    day = task_data.get('day', 'Monday')
-    day_tasks = [t for t in tasks.values() if t.get('day') == day]
-
-    if len(day_tasks) >= config.MAX_TASKS_PER_DAY:
-        return {
-            'success': False,
-            'error': "⚠️ Слишком много задач на этот день.\nПопробуй распределить нагрузку."
-        }
-
-    # ===== ID =====
-    task_id = max([int(k) for k in tasks.keys()], default=0) + 1
-
-    # ===== SAFE DURATION =====
+def save_data(data: dict) -> bool:
+    ensure_data_dir()
     try:
-        duration = float(task_data.get('duration_hours', 1))
-    except:
-        duration = 1
+        with open(config.DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения data.json: {e}")
+        return False
 
-    task = {
-        'id': task_id,
-        'title': task_data.get('title', 'Без названия'),
-        'day': day,
-        'duration_hours': duration,
-        'priority': task_data.get('priority', 'medium'),
-        'completed': False,
-        'created_at': datetime.now().isoformat(),
-        'updated_at': None
+
+def _get_user_tasks(data: dict, user_id: str) -> list:
+    return data.setdefault("users", {}).setdefault(user_id, {}).setdefault("tasks", [])
+
+
+# ===== CRUD ЗАДАЧ =====
+
+def add_task(user_id, task: dict) -> dict:
+    data = load_data()
+    uid = str(user_id)
+    tasks = _get_user_tasks(data, uid)
+
+    task_record = {
+        "title":          task.get("title", "Без названия").strip(),
+        "priority":       task.get("priority", "medium"),
+        "duration_hours": int(task.get("duration_hours", 1)),
+        "day":            task.get("day", "Понедельник"),
+        "done":           False,
+        "created_at":     datetime.now().isoformat(),
     }
+    tasks.append(task_record)
 
-    tasks[str(task_id)] = task
+    if not save_data(data):
+        raise RuntimeError("Не удалось сохранить задачу")
 
-    stats = user.setdefault('stats', {})
-    stats['tasks_added'] = stats.get('tasks_added', 0) + 1
-
-    save_data(data)
-
-    return {'success': True, 'task_id': task_id, 'message': f"✅ Задача #{task_id} добавлена"}
+    logger.info(f"Задача добавлена для {uid}: {task_record['title']}")
+    return {"message": "✅ Задача добавлена", "task": task_record}
 
 
-def get_task(user_id: int, task_id: int, planning_mode: str = 'weekly') -> Optional[Dict]:
-    tasks = get_user_tasks(user_id, planning_mode)
-    return tasks.get(str(task_id))
-
-
-def edit_task(user_id: int, task_id: int, updates: Dict, planning_mode: str = 'weekly') -> Dict:
+def toggle_task_done(user_id, index: int) -> dict | None:
+    """
+    Переключает done True/False.
+    Возвращает обновлённую задачу или None если индекс не найден.
+    """
     data = load_data()
-    user_key = str(user_id)
-
-    if user_key not in data['users']:
-        return {'success': False, 'error': 'Пользователь не найден'}
-
-    tasks = data['users'][user_key]['tasks'].get(planning_mode, {})
-    task = tasks.get(str(task_id))
-
-    if not task:
-        return {'success': False, 'error': f'Задача #{task_id} не найдена'}
-
-    for key in ['title', 'day', 'duration_hours', 'priority', 'completed']:
-        if key in updates:
-            task[key] = updates[key]
-
-    task['updated_at'] = datetime.now().isoformat()
-
-    stats = data['users'][user_key].setdefault('stats', {})
-    stats['tasks_edited'] = stats.get('tasks_edited', 0) + 1
-
+    tasks = _get_user_tasks(data, str(user_id))
+    if not (0 <= index < len(tasks)):
+        return None
+    tasks[index]["done"] = not tasks[index].get("done", False)
+    if tasks[index]["done"]:
+        tasks[index]["done_at"] = datetime.now().isoformat()
+    else:
+        tasks[index].pop("done_at", None)
     save_data(data)
+    return tasks[index]
 
-    return {'success': True, 'message': f"✅ Задача #{task_id} обновлена"}
 
-
-def delete_task(user_id: int, task_id: int, planning_mode: str = 'weekly') -> Dict:
+def edit_task_field(user_id, index: int, field: str, value) -> bool:
+    """Обновляет одно поле задачи (priority | duration_hours | day | title)."""
+    allowed = {"priority", "duration_hours", "day", "title"}
+    if field not in allowed:
+        return False
     data = load_data()
-    user_key = str(user_id)
-
-    tasks = data['users'].get(user_key, {}).get('tasks', {}).get(planning_mode, {})
-    task = tasks.pop(str(task_id), None)
-
-    if not task:
-        return {'success': False, 'error': 'Задача не найдена'}
-
-    stats = data['users'][user_key].setdefault('stats', {})
-    stats['tasks_deleted'] = stats.get('tasks_deleted', 0) + 1
-
+    tasks = _get_user_tasks(data, str(user_id))
+    if not (0 <= index < len(tasks)):
+        return False
+    tasks[index][field] = value
+    tasks[index]["updated_at"] = datetime.now().isoformat()
     save_data(data)
+    logger.info(f"Задача {index} обновлена: {field}={value}")
+    return True
 
-    return {'success': True, 'message': "🗑️ Задача удалена"}
 
-
-def mark_task_completed(user_id: int, task_id: int, planning_mode: str = 'weekly') -> Dict:
-    result = edit_task(user_id, task_id, {'completed': True}, planning_mode)
-
-    if result['success']:
-        data = load_data()
-        stats = data['users'][str(user_id)].setdefault('stats', {})
-        stats['tasks_completed'] = stats.get('tasks_completed', 0) + 1
+def delete_task(user_id, index: int) -> bool:
+    data = load_data()
+    tasks = _get_user_tasks(data, str(user_id))
+    if 0 <= index < len(tasks):
+        removed = tasks.pop(index)
         save_data(data)
+        logger.info(f"Задача удалена: {removed['title']}")
+        return True
+    return False
 
-    return result
+
+def clear_all_tasks(user_id) -> bool:
+    data = load_data()
+    uid = str(user_id)
+    if uid in data.get("users", {}):
+        data["users"][uid]["tasks"] = []
+        save_data(data)
+        return True
+    return False
 
 
-# ===== СВОДКА =====
+# ===== ОТОБРАЖЕНИЕ =====
 
-def get_tasks_summary(user_id: int, planning_mode: str = 'weekly') -> str:
-    tasks = get_user_tasks(user_id, planning_mode)
+def _task_line(i: int, t: dict, show_index: bool = True) -> str:
+    icon  = PRIORITY_ICON.get(t.get("priority"), "⚪")
+    done  = "✅" if t.get("done") else "◻️"
+    title = t["title"]
+    if t.get("done"):
+        title = f"<s>{title}</s>"
+    prefix = f"{i}. " if show_index else ""
+    return (
+        f"{prefix}{done} {icon} {title}  "
+        f"<i>{t.get('duration_hours', 1)}ч · {t.get('day', '—')}</i>"
+    )
+
+
+def get_tasks_summary(user_id) -> str:
+    data = load_data()
+    tasks = _get_user_tasks(data, str(user_id))
 
     if not tasks:
-        return "📭 Нет задач"
+        return "📭 Нет задач. Добавьте первую!"
 
-    summary = "📋 Ваши задачи:\n\n"
-    total = 0
+    lines = ["📋 <b>Ваши задачи:</b>\n"]
+    for i, t in enumerate(tasks, 1):
+        lines.append(_task_line(i, t))
 
-    for task in tasks.values():
-        status = '✅' if task.get('completed') else '⏳'
-        summary += f"{status} #{task['id']} {task['title']} ({task['duration_hours']}ч)\n"
-        total += float(task.get('duration_hours', 0))
+    pending = [t for t in tasks if not t.get("done")]
+    done    = [t for t in tasks if t.get("done")]
+    total_h = sum(t.get("duration_hours", 1) for t in pending)
 
-    summary += f"\n⏱️ Всего: {total} ч"
+    lines.append(f"\n✅ Выполнено: {len(done)} / {len(tasks)}")
+    lines.append(f"⏱️ Осталось: {total_h} ч")
 
-    return summary
+    if total_h > config.MAX_TASKS_PER_DAY:
+        lines.append("⚠️ Нагрузка выше нормы — подумай о переносе задач")
+
+    return "\n".join(lines)
 
 
-def clear_all_tasks(user_id: int, planning_mode: str = None) -> Dict:
-    data = load_data()
-    user_key = str(user_id)
-
-    if planning_mode:
-        data['users'][user_key]['tasks'][planning_mode] = {}
-    else:
-        data['users'][user_key]['tasks'] = {'daily': {}, 'weekly': {}}
-
-    save_data(data)
-
-    return {'success': True, 'message': "🧹 Очищено"}
+def get_task_statistics(user_id) -> dict:
+    data  = load_data()
+    tasks = _get_user_tasks(data, str(user_id))
+    done  = [t for t in tasks if t.get("done")]
+    return {
+        "total":       len(tasks),
+        "done":        len(done),
+        "pending":     len(tasks) - len(done),
+        "total_hours": sum(t.get("duration_hours", 1) for t in tasks),
+        "done_hours":  sum(t.get("duration_hours", 1) for t in done),
+        "by_priority": {
+            "high":   sum(1 for t in tasks if t.get("priority") == "high"),
+            "medium": sum(1 for t in tasks if t.get("priority") == "medium"),
+            "low":    sum(1 for t in tasks if t.get("priority") == "low"),
+        },
+    }
