@@ -106,22 +106,32 @@ def send_photo(user_id: int, photo_path: str, caption: str = ""):
 
 
 def send_audio(user_id: int, audio_path: str, caption: str = ""):
-    """Отправить аудио как документ через правильный peer_id."""
+    """Отправить аудио как документ через ручную загрузку."""
+    import requests
     path = Path(audio_path)
     if not path.exists():
         logger.warning(f"Файл не найден: {audio_path}")
         send(user_id, "⚠️ Аудио недоступно")
         return
     try:
-        # peer_id для личных сообщений = user_id
-        peer_id  = user_id
-        upload   = vk_api.VkUpload(vk_session)
-        doc_info = upload.document_message(
-            str(path),
-            peer_id=peer_id,
-            title=path.stem,
-        )
-        attachment = "doc{}_{}".format(doc_info["owner_id"], doc_info["id"])
+        # Шаг 1: получаем URL для загрузки
+        upload_data = vk.docs.getMessagesUploadServer(peer_id=user_id, type="audio_message")
+        upload_url  = upload_data["upload_url"]
+
+        # Шаг 2: загружаем файл
+        with open(str(path), "rb") as f:
+            resp = requests.post(upload_url, files={"file": (path.name, f, "audio/mpeg")})
+        result = resp.json()
+
+        if "file" not in result:
+            raise Exception(f"Ошибка загрузки: {result}")
+
+        # Шаг 3: сохраняем документ
+        saved = vk.docs.save(file=result["file"], title=path.stem)
+        doc   = saved["audio_message"] if "audio_message" in saved else saved.get("doc", {})
+        attachment = "doc{}_{}".format(doc["owner_id"], doc["id"])
+
+        # Шаг 4: отправляем
         vk.messages.send(
             user_id=user_id,
             message=caption,
@@ -130,8 +140,7 @@ def send_audio(user_id: int, audio_path: str, caption: str = ""):
         )
     except Exception as e:
         logger.error(f"Ошибка отправки аудио: {e}")
-        # Отправляем текст с описанием практики как fallback
-        send(user_id, f"🎧 Аудио временно недоступно. Практику можно найти в приложении.")
+        send(user_id, "🎧 Аудио временно недоступно")
 
 
 def get_state(user_id: int) -> dict:
