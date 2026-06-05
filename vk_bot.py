@@ -106,29 +106,46 @@ def send_photo(user_id: int, photo_path: str, caption: str = ""):
 
 
 def send_audio(user_id: int, audio_path: str, caption: str = ""):
-    """Отправить аудио как документ через ручную загрузку."""
+    """
+    Отправить аудио как голосовое сообщение.
+    Для ВК используем .ogg файлы (p1.ogg, p2.ogg...).
+    Если .ogg нет — отправляем текст с описанием.
+    """
     import requests
+
+    # Пробуем .ogg версию вместо .mp3
     path = Path(audio_path)
-    if not path.exists():
+    ogg_path = path.with_suffix(".ogg")
+
+    if ogg_path.exists():
+        use_path = ogg_path
+        mime     = "audio/ogg"
+        doc_type = "audio_message"
+    elif path.exists():
+        use_path = path
+        mime     = "audio/mpeg"
+        doc_type = "audio_message"
+    else:
         logger.warning(f"Файл не найден: {audio_path}")
         send(user_id, "⚠️ Аудио недоступно")
         return
+
     try:
-        # Шаг 1: получаем URL для загрузки как обычный документ
-        upload_data = vk.docs.getMessagesUploadServer(peer_id=user_id, type="doc")
+        # Шаг 1: получаем URL для загрузки голосового
+        upload_data = vk.docs.getMessagesUploadServer(peer_id=user_id, type=doc_type)
         upload_url  = upload_data["upload_url"]
 
         # Шаг 2: загружаем файл
-        with open(str(path), "rb") as f:
-            resp = requests.post(upload_url, files={"file": (path.name, f, "audio/mpeg")})
+        with open(str(use_path), "rb") as f:
+            resp = requests.post(upload_url, files={"file": (use_path.name, f, mime)})
         result = resp.json()
 
         if "file" not in result:
             raise Exception(f"Ошибка загрузки: {result}")
 
-        # Шаг 3: сохраняем документ
-        saved = vk.docs.save(file=result["file"], title=path.stem)
-        doc   = saved.get("doc", {})
+        # Шаг 3: сохраняем
+        saved = vk.docs.save(file=result["file"], title=use_path.stem)
+        doc   = saved.get("audio_message") or saved.get("doc", {})
         attachment = "doc{}_{}".format(doc["owner_id"], doc["id"])
 
         # Шаг 4: отправляем
@@ -138,6 +155,7 @@ def send_audio(user_id: int, audio_path: str, caption: str = ""):
             attachment=attachment,
             random_id=random.randint(0, 2**31),
         )
+        logger.info(f"Аудио отправлено: {use_path.name}")
     except Exception as e:
         logger.error(f"Ошибка отправки аудио: {e}")
         send(user_id, "🎧 Аудио временно недоступно")
