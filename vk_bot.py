@@ -708,31 +708,6 @@ def route(user_id: int, first_name: str, text: str):
 
 # ===== ТОЧКА ВХОДА =====
 
-def main():
-    logger.info("🎵 Tempo VK Bot запускается...")
-    start_reminders_thread()
-    logger.info("⏰ Напоминания активированы")
-    longpoll = VkLongPoll(vk_session)
-    logger.info("✅ VK Bot готов к работе!")
-    print("🚀 Tempo VK Bot запущен!")
-
-    for event in longpoll.listen():
-        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-            try:
-                user_id    = event.user_id
-                text       = event.text or ""
-                # Получаем имя пользователя
-                user_info  = vk.users.get(user_ids=user_id)[0]
-                first_name = user_info.get("first_name", "друг")
-                route(user_id, first_name, text)
-            except Exception as e:
-                logger.error(f"Ошибка обработки события: {e}", exc_info=True)
-
-
-if __name__ == "__main__":
-    main()
-
-
 # ===== НАПОМИНАНИЯ =====
 
 import threading
@@ -810,3 +785,29 @@ def start_reminders_thread():
     t = threading.Thread(target=reminders_loop, daemon=True)
     t.start()
     return t
+
+
+# ===== ТОЧКА ВХОДА =====
+
+def main():
+    logger.info("🎵 Tempo VK Bot запускается...")
+    start_reminders_thread()
+    logger.info("⏰ Напоминания активированы")
+    longpoll = VkLongPoll(vk_session)
+    logger.info("✅ VK Bot готов к работе!")
+    print("🚀 Tempo VK Bot запущен!")
+
+    for event in longpoll.listen():
+        if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+            try:
+                user_id    = event.user_id
+                text       = event.text or ""
+                user_info  = vk.users.get(user_ids=user_id)[0]
+                first_name = user_info.get("first_name", "друг")
+                route(user_id, first_name, text)
+            except Exception as e:
+                logger.error(f"Ошибка обработки события: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    main()
