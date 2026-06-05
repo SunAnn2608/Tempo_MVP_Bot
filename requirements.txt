@@ -2,3 +2,4 @@ python-telegram-bot[job-queue]>=20.7
 python-dotenv>=1.0.0
 openai>=1.0.0
 vk-api>=11.9
+requests>=2.28.0
