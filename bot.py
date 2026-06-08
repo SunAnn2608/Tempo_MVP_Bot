@@ -62,7 +62,8 @@ PRIORITY_LABELS = {
 }
 
 # ID администратора — подставь свой Telegram user_id
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+_raw = os.getenv("ADMIN_IDS", os.getenv("ADMIN_ID", "0"))
+ADMIN_IDS = {int(x.strip()) for x in _raw.split(",") if x.strip().isdigit()}
 
 
 # ===== КЛАВИАТУРЫ =====
@@ -603,7 +604,7 @@ async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_feedback_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Просмотр последних отзывов (только для ADMIN_ID)."""
     user_id = update.effective_user.id
-    if ADMIN_ID and user_id != ADMIN_ID:
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Доступ запрещён")
         return
 
@@ -623,7 +624,7 @@ async def cmd_feedback_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def cmd_feedback_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Статистика обратной связи (только для ADMIN_ID)."""
     user_id = update.effective_user.id
-    if ADMIN_ID and user_id != ADMIN_ID:
+    if ADMIN_IDS and user_id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Доступ запрещён")
         return
     await update.message.reply_text(get_feedback_stats(), parse_mode="HTML")
